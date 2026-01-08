@@ -2,37 +2,67 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Game of Life - Drawing Fixed</title>
+    <title>Game of Life - Master Suite</title>
     <style>
         body { margin: 0; background: #f0f0f0; color: #333; font-family: 'Segoe UI', sans-serif; overflow: hidden; touch-action: none; display: flex; }
-        #sidebar { width: 260px; height: 100vh; background: rgba(255,255,255,0.95); border-right: 1px solid #ddd; display: flex; flex-direction: column; z-index: 20; box-shadow: 2px 0 10px rgba(0,0,0,0.05); backdrop-filter: blur(10px); flex-shrink: 0; }
+        
+        #sidebar { 
+            width: 260px; height: 100vh; background: rgba(255,255,255,0.95); border-right: 1px solid #ddd; 
+            display: flex; flex-direction: column; z-index: 20; box-shadow: 2px 0 10px rgba(0,0,0,0.05); 
+            backdrop-filter: blur(10px); flex-shrink: 0; transition: width 0.3s ease; position: relative;
+        }
+        #sidebar.collapsed { width: 0; border-right: none; }
+        #sidebar-content { width: 260px; height: 100%; display: flex; flex-direction: column; overflow: hidden; transition: opacity 0.2s; }
+        #sidebar.collapsed #sidebar-content { opacity: 0; pointer-events: none; }
+
+        #foldBtn {
+            position: absolute; right: -30px; top: 20px; width: 30px; height: 40px; 
+            background: #fff; border: 1px solid #ddd; border-left: none; border-radius: 0 8px 8px 0;
+            cursor: pointer; z-index: 30; display: flex; align-items: center; justify-content: center;
+            font-weight: bold; box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+        }
+
         .sidebar-header { padding: 20px; border-bottom: 1px solid #eee; font-weight: bold; font-size: 1.1em; }
         .storage-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 10px; border-bottom: 1px solid #eee; }
         #shape-list { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
-        .shape-item { padding: 10px; border: 1px solid #eee; border-radius: 6px; background: #fff; cursor: pointer; font-size: 0.85em; display: flex; justify-content: space-between; align-items: center; }
-        .shape-item:hover { background: #f0f7ff; border-color: #4a90e2; }
-        .delete-btn { background: #fff0f0; border: 1px solid #ffcccc; color: #d9534f; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.9em; }
-        #controls { position: absolute; top: 20px; left: 280px; background: rgba(255,255,255,0.9); padding: 15px; border-radius: 12px; display: flex; flex-direction: column; gap: 10px; z-index: 10; border: 1px solid #ddd; box-shadow: 0 8px 32px rgba(0,0,0,0.1); width: 220px; }
+        
+        #controls { 
+            position: absolute; top: 20px; left: 280px; transition: left 0.3s ease; 
+            background: rgba(255,255,255,0.9); padding: 15px; border-radius: 12px; 
+            display: flex; flex-direction: column; gap: 10px; z-index: 15; 
+            border: 1px solid #ddd; box-shadow: 0 8px 32px rgba(0,0,0,0.1); width: 220px; 
+        }
+        #sidebar.collapsed ~ #controls { left: 50px; }
+
         canvas { flex-grow: 1; display: block; cursor: crosshair; }
         .row { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
         input[type="range"] { width: 100%; accent-color: #4a90e2; cursor: pointer; }
-        label { font-size: 0.75em; font-weight: 700; color: #888; text-transform: uppercase; }
-        button { cursor: pointer; padding: 8px; background: #fff; border: 1px solid #ddd; border-radius: 6px; transition: all 0.2s; font-size: 0.85em; }
+        button { cursor: pointer; padding: 8px; background: #fff; border: 1px solid #ddd; border-radius: 6px; font-size: 0.85em; transition: 0.2s; }
+        button:hover { background: #f8f8f8; }
         button.active { background: #4a90e2; color: white; border-color: #2a70c2; }
         .btn-group { display: flex; gap: 5px; width: 100%; }
-        .hint { font-size: 0.7em; opacity: 0.7; border-top: 1px solid #eee; padding-top: 5px; line-height: 1.4; }
+        .delete-btn { background: #fff0f0; border: 1px solid #ffcccc; color: #d9534f; border-radius: 4px; padding: 4px 8px; cursor: pointer; }
+        .delete-btn:hover { background: #d9534f; color: #fff; }
+        .shape-item { padding: 10px; border: 1px solid #eee; border-radius: 6px; background: #fff; cursor: pointer; font-size: 0.85em; display: flex; justify-content: space-between; align-items: center; }
+        .shape-info { display: flex; flex-direction: column; overflow: hidden; text-overflow: ellipsis; }
+        .hint { font-size: 0.7em; opacity: 0.7; border-top: 1px solid #eee; padding-top: 5px; line-height: 1.3; }
     </style>
 </head>
 <body>
+
 <div id="sidebar">
-    <div class="sidebar-header">Shape Library</div>
-    <div class="storage-btns">
-        <button id="exportBtn">Export</button>
-        <button id="importBtn">Import</button>
+    <button id="foldBtn">◀</button>
+    <div id="sidebar-content">
+        <div class="sidebar-header">Shape Library</div>
+        <div class="storage-btns">
+            <button id="exportBtn">Export</button>
+            <button id="importBtn">Import</button>
+        </div>
+        <input type="file" id="fileInput" style="display:none" accept=".json">
+        <div id="shape-list"></div>
     </div>
-    <input type="file" id="fileInput" style="display:none" accept=".json">
-    <div id="shape-list"></div>
 </div>
+
 <div id="controls">
     <div class="btn-group"><button id="playPause">Play (Space)</button></div>
     <div class="btn-group">
@@ -52,21 +82,20 @@
         <input type="range" id="speed" min="10" max="500" value="100" dir="rtl">
     </div>
     <button id="clear" style="color: #d9534f;">Clear Grid</button>
-    <div class="hint">
-        <b>Hold R:</b> Smooth Auto-Track<br>
-        <b>WASD:</b> Move camera<br>
-        <b>Q / E:</b> Zoom Out / In
-    </div>
+    <div class="hint"><b>WASD:</b> Pan | <b>Q/E:</b> Zoom<br><b>Hold R:</b> Smooth Tracking</div>
 </div>
+
 <canvas id="canvas"></canvas>
+
 <script>
 const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
-const shapeListEl = document.getElementById('shape-list'), zoomInput = document.getElementById('zoom'), speedInput = document.getElementById('speed');
+const sidebar = document.getElementById('sidebar'), foldBtn = document.getElementById('foldBtn');
+const zoomInput = document.getElementById('zoom'), speedInput = document.getElementById('speed'), shapeListEl = document.getElementById('shape-list');
+const fileInput = document.getElementById('fileInput'), exportBtn = document.getElementById('exportBtn'), importBtn = document.getElementById('importBtn');
 
 let cellSize = 30, grid = new Set(), history = [], shapeLibrary = [];
-let isPlaying = false, lastTick = 0;
-let cameraX = 0, cameraY = 0; // The grid point at the center of the viewport
-let mode = 'draw', isDraggingOnCanvas = false, selectionStart = null, selectionEnd = null;
+let isPlaying = false, lastTick = 0, cameraX = 0, cameraY = 0;
+let mode = 'draw', isDragging = false, selectionStart = null, selectionEnd = null;
 let currentClipboard = null, drawModeType = true, lastMousePos = null;
 
 const keys = {};
@@ -80,42 +109,63 @@ window.onkeydown = (e) => {
 };
 window.onkeyup = (e) => keys[e.code] = false;
 
-function getCoord(x, y) { return `${x},${y}`; }
 function screenToGrid(clientX, clientY) {
     const rect = canvas.getBoundingClientRect();
-    const rx = clientX - rect.left, ry = clientY - rect.top;
-    const x = Math.floor((rx - canvas.width / 2) / cellSize + cameraX);
-    const y = Math.floor((ry - canvas.height / 2) / cellSize + cameraY);
+    const x = Math.floor((clientX - rect.left - canvas.width / 2) / cellSize + cameraX);
+    const y = Math.floor((clientY - rect.top - canvas.height / 2) / cellSize + cameraY);
     return { x, y };
 }
 
+function updateCanvasSize() {
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = window.innerWidth - rect.left;
+    canvas.height = window.innerHeight;
+    render();
+}
+
+// Sidebar Fold Logic
+foldBtn.onclick = () => {
+    sidebar.classList.toggle('collapsed');
+    foldBtn.innerText = sidebar.classList.contains('collapsed') ? '▶' : '◀';
+    setTimeout(updateCanvasSize, 310);
+};
+
+// --- Storage & UI ---
 function updateLibraryUI() {
-    shapeListEl.innerHTML = shapeLibrary.length === 0 ? '<div style="font-size: 0.8em; color: #999; text-align: center; margin-top: 20px;">Use Select Mode to save shapes.</div>' : '';
+    shapeListEl.innerHTML = shapeLibrary.length === 0 ? '<div style="font-size: 0.8em; color: #999; text-align: center; margin-top: 20px;">Save shapes in Select Mode.</div>' : '';
     shapeLibrary.forEach((item, index) => {
         const div = document.createElement('div');
         div.className = 'shape-item';
-        div.innerHTML = `<div class="shape-info"><span class="shape-name">${item.name}</span><span class="shape-meta">${item.pattern.length} cells</span></div><button class="delete-btn">×</button>`;
+        div.innerHTML = `<div class="shape-info"><b>${item.name}</b><small>${item.pattern.length} cells</small></div><button class="delete-btn">×</button>`;
         div.onclick = () => { currentClipboard = item.pattern; mode = 'paste'; document.querySelectorAll('button').forEach(b => b.classList.remove('active')); };
-        div.querySelector('.delete-btn').onclick = (e) => { e.stopPropagation(); shapeLibrary.splice(index, 1); localStorage.setItem('gol_library', JSON.stringify(shapeLibrary)); updateLibraryUI(); };
+        div.querySelector('.delete-btn').onclick = (e) => { e.stopPropagation(); shapeLibrary.splice(index, 1); saveLib(); updateLibraryUI(); };
         shapeListEl.appendChild(div);
     });
 }
+function saveLib() { localStorage.setItem('gol_library', JSON.stringify(shapeLibrary)); }
+
+exportBtn.onclick = () => {
+    const blob = new Blob([JSON.stringify(shapeLibrary)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'library.json'; a.click();
+};
+importBtn.onclick = () => fileInput.click();
+fileInput.onchange = (e) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => { shapeLibrary = JSON.parse(ev.target.result); saveLib(); updateLibraryUI(); };
+    reader.readAsText(e.target.files[0]);
+};
 
 function smoothTrack() {
     if (grid.size === 0) return;
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     grid.forEach(k => {
         const [x, y] = k.split(',').map(Number);
-        if (x < minX) minX = x; if (x > maxX) maxX = x;
-        if (y < minY) minY = y; if (y > maxY) maxY = y;
+        minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
     });
-    const padding = 6;
-    const targetZoom = Math.min(canvas.width / ((maxX - minX) + padding), canvas.height / ((maxY - minY) + padding), 150);
-    const targetCX = (minX + maxX) / 2;
-    const targetCY = (minY + maxY) / 2;
-    cellSize += (Math.max(2, targetZoom) - cellSize) * 0.1;
-    cameraX += (targetCX - cameraX) * 0.1;
-    cameraY += (targetCY - cameraY) * 0.1;
+    cellSize += (Math.max(2, Math.min(canvas.width / ((maxX - minX) + 8), canvas.height / ((maxY - minY) + 8), 150)) - cellSize) * 0.1;
+    cameraX += (((minX + maxX) / 2) - cameraX) * 0.1;
+    cameraY += (((minY + maxY) / 2) - cameraY) * 0.1;
     zoomInput.value = cellSize;
 }
 
@@ -126,7 +176,7 @@ function step() {
         const [gx, gy] = k.split(',').map(Number);
         for(let i=-1; i<=1; i++) for(let j=-1; j<=1; j++) {
             if(i===0 && j===0) continue;
-            const nk = getCoord(gx+i, gy+j);
+            const nk = `${gx+i},${gy+j}`;
             counts.set(nk, (counts.get(nk) || 0) + 1);
         }
     });
@@ -135,48 +185,40 @@ function step() {
 }
 
 canvas.addEventListener('mousedown', (e) => {
-    isDraggingOnCanvas = true; 
     const pos = screenToGrid(e.clientX, e.clientY);
-    if (mode === 'draw') { 
-        drawModeType = !grid.has(getCoord(pos.x, pos.y)); 
-        const k = getCoord(pos.x, pos.y); 
-        if(drawModeType) grid.add(k); else grid.delete(k); 
-    } else if (mode === 'select') { 
-        selectionStart = pos; 
-        selectionEnd = pos; 
-    } else if (mode === 'paste' && currentClipboard) { 
-        currentClipboard.forEach(c => grid.add(getCoord(pos.x + c.x, pos.y + c.y))); 
-        mode = 'draw'; 
-        document.getElementById('drawModeBtn').click(); 
+    if (mode === 'paste') {
+        currentClipboard.forEach(c => grid.add(`${pos.x + c.x},${pos.y + c.y}`));
+        mode = 'draw'; document.getElementById('drawModeBtn').click();
+        return;
     }
+    isDragging = true;
+    if (mode === 'draw') {
+        drawModeType = !grid.has(`${pos.x},${pos.y}`);
+        if(drawModeType) grid.add(`${pos.x},${pos.y}`); else grid.delete(`${pos.x},${pos.y}`);
+    } else { selectionStart = pos; selectionEnd = pos; }
 });
 
-window.addEventListener('mousemove', (e) => { 
-    lastMousePos = { x: e.clientX, y: e.clientY }; 
-    if (!isDraggingOnCanvas) return;
-    
+window.addEventListener('mousemove', (e) => {
+    lastMousePos = { x: e.clientX, y: e.clientY };
+    if (!isDragging) return;
     const pos = screenToGrid(e.clientX, e.clientY);
     if (mode === 'draw') {
-        const k = getCoord(pos.x, pos.y);
-        if (drawModeType) grid.add(k); else grid.delete(k);
-    } else if (mode === 'select') {
-        selectionEnd = pos;
-    }
+        if(drawModeType) grid.add(`${pos.x},${pos.y}`); else grid.delete(`${pos.x},${pos.y}`);
+    } else selectionEnd = pos;
 });
 
-window.addEventListener('mouseup', () => { 
-    if (isDraggingOnCanvas && mode === 'select' && selectionStart && selectionEnd) {
+window.addEventListener('mouseup', () => {
+    if (isDragging && mode === 'select' && selectionStart && selectionEnd) {
         const x1 = Math.min(selectionStart.x, selectionEnd.x), y1 = Math.min(selectionStart.y, selectionEnd.y);
         const x2 = Math.max(selectionStart.x, selectionEnd.x), y2 = Math.max(selectionStart.y, selectionEnd.y);
         const pattern = [];
-        for (let x = x1; x <= x2; x++) for (let y = y1; y <= y2; y++) if (grid.has(getCoord(x, y))) pattern.push({ x: x - x1, y: y - y1 });
+        for (let x = x1; x <= x2; x++) for (let y = y1; y <= y2; y++) if (grid.has(`${x},${y}`)) pattern.push({ x: x - x1, y: y - y1 });
         if (pattern.length > 0) {
-            const name = prompt("Name your shape:", `Shape ${shapeLibrary.length + 1}`);
-            if (name) { shapeLibrary.push({ name, pattern }); localStorage.setItem('gol_library', JSON.stringify(shapeLibrary)); updateLibraryUI(); }
+            const name = prompt("Name shape:");
+            if (name) { shapeLibrary.push({ name, pattern }); saveLib(); updateLibraryUI(); }
         }
-        selectionStart = null; selectionEnd = null;
     }
-    isDraggingOnCanvas = false; 
+    isDragging = false; selectionStart = null; selectionEnd = null;
 });
 
 function render() {
@@ -191,9 +233,8 @@ function render() {
     ctx.fillStyle = '#4a90e2';
     grid.forEach(k => {
         const [x, y] = k.split(',').map(Number);
-        const screenX = (x - cameraX) * cellSize + sw / 2;
-        const screenY = (y - cameraY) * cellSize + sh / 2;
-        ctx.fillRect(screenX + 1, screenY + 1, cellSize - 2, cellSize - 2);
+        const sX = (x - cameraX) * cellSize + sw / 2, sY = (y - cameraY) * cellSize + sh / 2;
+        ctx.fillRect(sX + 1, sY + 1, cellSize - 2, cellSize - 2);
     });
     if (mode === 'select' && selectionStart && selectionEnd) {
         const x1 = Math.min(selectionStart.x, selectionEnd.x), y1 = Math.min(selectionStart.y, selectionEnd.y);
@@ -207,8 +248,7 @@ function render() {
     if (mode === 'paste' && currentClipboard && lastMousePos) {
         ctx.globalAlpha = 0.4; const {x: gx, y: gy} = screenToGrid(lastMousePos.x, lastMousePos.y);
         currentClipboard.forEach(c => {
-            const sX = (gx + c.x - cameraX) * cellSize + sw / 2;
-            const sY = (gy + c.y - cameraY) * cellSize + sh / 2;
+            const sX = (gx + c.x - cameraX) * cellSize + sw / 2, sY = (gy + c.y - cameraY) * cellSize + sh / 2;
             ctx.fillRect(sX + 1, sY + 1, cellSize - 2, cellSize - 2);
         });
         ctx.globalAlpha = 1.0;
@@ -216,27 +256,27 @@ function render() {
 }
 
 function loop(t) {
-    if (keys['KeyR']) { smoothTrack(); } else {
-        const moveStep = 15 / cellSize; 
-        if (keys['KeyW']) cameraY -= moveStep; if (keys['KeyS']) cameraY += moveStep;
-        if (keys['KeyA']) cameraX -= moveStep; if (keys['KeyD']) cameraX += moveStep;
+    if (keys['KeyR']) smoothTrack(); else {
+        const ms = 15 / cellSize; 
+        if (keys['KeyW']) cameraY -= ms; if (keys['KeyS']) cameraY += ms;
+        if (keys['KeyA']) cameraX -= ms; if (keys['KeyD']) cameraX += ms;
         if (keys['KeyQ'] && cellSize > 2) cellSize -= 0.5;
         if (keys['KeyE'] && cellSize < 150) cellSize += 0.5;
-        zoomInput.value = cellSize;
     }
     if (isPlaying && t - lastTick > parseInt(speedInput.value)) { step(); lastTick = t; }
     render(); requestAnimationFrame(loop);
 }
 
-document.getElementById('selectModeBtn').onclick = () => { mode = 'select'; selectModeBtn.classList.add('active'); drawModeBtn.classList.remove('active'); selectionStart = null; };
-document.getElementById('drawModeBtn').onclick = () => { mode = 'draw'; drawModeBtn.classList.add('active'); selectModeBtn.classList.remove('active'); selectionStart = null; };
+document.getElementById('selectModeBtn').onclick = () => { mode = 'select'; selectModeBtn.classList.add('active'); drawModeBtn.classList.remove('active'); };
+document.getElementById('drawModeBtn').onclick = () => { mode = 'draw'; drawModeBtn.classList.add('active'); selectModeBtn.classList.remove('active'); render(); };
 document.getElementById('playPause').onclick = function() { isPlaying = !isPlaying; this.innerText = isPlaying ? "Pause" : "Play"; };
 document.getElementById('clear').onclick = () => { grid.clear(); history = []; };
 zoomInput.oninput = (e) => cellSize = parseInt(e.target.value);
+
+window.onresize = updateCanvasSize;
 const saved = localStorage.getItem('gol_library');
 if (saved) { shapeLibrary = JSON.parse(saved); updateLibraryUI(); }
-window.onresize = () => { canvas.width = window.innerWidth - 260; canvas.height = window.innerHeight; };
-window.onresize();
+updateCanvasSize();
 loop(0);
 </script>
 </body>
