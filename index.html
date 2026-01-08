@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Game of Life - Stable Zoom</title>
+    <title>Game of Life - Drawing Fixed</title>
     <style>
         body { margin: 0; background: #f0f0f0; color: #333; font-family: 'Segoe UI', sans-serif; overflow: hidden; touch-action: none; display: flex; }
         #sidebar { width: 260px; height: 100vh; background: rgba(255,255,255,0.95); border-right: 1px solid #ddd; display: flex; flex-direction: column; z-index: 20; box-shadow: 2px 0 10px rgba(0,0,0,0.05); backdrop-filter: blur(10px); flex-shrink: 0; }
@@ -62,10 +62,10 @@
 <script>
 const canvas = document.getElementById('canvas'), ctx = canvas.getContext('2d');
 const shapeListEl = document.getElementById('shape-list'), zoomInput = document.getElementById('zoom'), speedInput = document.getElementById('speed');
+
 let cellSize = 30, grid = new Set(), history = [], shapeLibrary = [];
 let isPlaying = false, lastTick = 0;
-// cameraX/Y now represent the grid coordinate that is at the center of the screen
-let cameraX = 0, cameraY = 0;
+let cameraX = 0, cameraY = 0; // The grid point at the center of the viewport
 let mode = 'draw', isDraggingOnCanvas = false, selectionStart = null, selectionEnd = null;
 let currentClipboard = null, drawModeType = true, lastMousePos = null;
 
@@ -109,7 +109,7 @@ function smoothTrack() {
         if (x < minX) minX = x; if (x > maxX) maxX = x;
         if (y < minY) minY = y; if (y > maxY) maxY = y;
     });
-    const padding = 4;
+    const padding = 6;
     const targetZoom = Math.min(canvas.width / ((maxX - minX) + padding), canvas.height / ((maxY - minY) + padding), 150);
     const targetCX = (minX + maxX) / 2;
     const targetCY = (minY + maxY) / 2;
@@ -135,15 +135,33 @@ function step() {
 }
 
 canvas.addEventListener('mousedown', (e) => {
-    isDraggingOnCanvas = true; const pos = screenToGrid(e.clientX, e.clientY);
-    if (mode === 'draw') { drawModeType = !grid.has(getCoord(pos.x, pos.y)); const k = getCoord(pos.x, pos.y); if(drawModeType) grid.add(k); else grid.delete(k); }
-    else if (mode === 'select') { selectionStart = pos; selectionEnd = pos; }
-    else if (mode === 'paste' && currentClipboard) { currentClipboard.forEach(c => grid.add(getCoord(pos.x + c.x, pos.y + c.y))); mode = 'draw'; document.getElementById('drawModeBtn').click(); }
+    isDraggingOnCanvas = true; 
+    const pos = screenToGrid(e.clientX, e.clientY);
+    if (mode === 'draw') { 
+        drawModeType = !grid.has(getCoord(pos.x, pos.y)); 
+        const k = getCoord(pos.x, pos.y); 
+        if(drawModeType) grid.add(k); else grid.delete(k); 
+    } else if (mode === 'select') { 
+        selectionStart = pos; 
+        selectionEnd = pos; 
+    } else if (mode === 'paste' && currentClipboard) { 
+        currentClipboard.forEach(c => grid.add(getCoord(pos.x + c.x, pos.y + c.y))); 
+        mode = 'draw'; 
+        document.getElementById('drawModeBtn').click(); 
+    }
 });
 
 window.addEventListener('mousemove', (e) => { 
     lastMousePos = { x: e.clientX, y: e.clientY }; 
-    if (isDraggingOnCanvas && mode === 'select') selectionEnd = screenToGrid(e.clientX, e.clientY); 
+    if (!isDraggingOnCanvas) return;
+    
+    const pos = screenToGrid(e.clientX, e.clientY);
+    if (mode === 'draw') {
+        const k = getCoord(pos.x, pos.y);
+        if (drawModeType) grid.add(k); else grid.delete(k);
+    } else if (mode === 'select') {
+        selectionEnd = pos;
+    }
 });
 
 window.addEventListener('mouseup', () => { 
@@ -202,8 +220,8 @@ function loop(t) {
         const moveStep = 15 / cellSize; 
         if (keys['KeyW']) cameraY -= moveStep; if (keys['KeyS']) cameraY += moveStep;
         if (keys['KeyA']) cameraX -= moveStep; if (keys['KeyD']) cameraX += moveStep;
-        if (keys['KeyQ'] && cellSize > 2) cellSize -= 1;
-        if (keys['KeyE'] && cellSize < 150) cellSize += 1;
+        if (keys['KeyQ'] && cellSize > 2) cellSize -= 0.5;
+        if (keys['KeyE'] && cellSize < 150) cellSize += 0.5;
         zoomInput.value = cellSize;
     }
     if (isPlaying && t - lastTick > parseInt(speedInput.value)) { step(); lastTick = t; }
