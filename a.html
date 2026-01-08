@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Game of Life - Precision Control</title>
+    <style>
+        body { margin: 0; background: #f0f0f0; color: #333; font-family: 'Segoe UI', sans-serif; overflow: hidden; touch-action: none; display: flex; }
+        
+        #sidebar { 
+            width: 260px; height: 100vh; background: rgba(255,255,255,0.95); border-right: 1px solid #ddd; 
+            display: flex; flex-direction: column; z-index: 20; box-shadow: 2px 0 10px rgba(0,0,0,0.05); 
+            backdrop-filter: blur(10px); flex-shrink: 0; 
+        }
+        .sidebar-header { padding: 20px; border-bottom: 1px solid #eee; font-weight: bold; font-size: 1.1em; }
+        
+        .storage-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 10px; border-bottom: 1px solid #eee; }
+        .storage-btns button { font-size: 0.75em; padding: 5px; background: #f8f8f8; }
+
+        #shape-list { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+        .shape-item { padding: 10px; border: 1px solid #eee; border-radius: 6px; background: #fff; cursor: pointer; font-size: 0.85em; display: flex; justify-content: space-between; align-items: center; }
+        .shape-item:hover { background: #f0f7ff; border-color: #4a90e2; }
+        .shape-info { display: flex; flex-direction: column; overflow: hidden; }
+        .shape-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .shape-meta { font-size: 0.8em; color: #888; }
+        .delete-btn { background: #fff0f0; border: 1px solid #ffcccc; color: #d9534f; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.9em; }
+
+        #controls { position: absolute; top: 20px; left: 280px; background: rgba(255,255,255,0.9); padding: 15px; border-radius: 12px; display: flex; flex-direction: column; gap: 10px; z-index: 10; border: 1px solid #ddd; box-shadow: 0 8px 32px rgba(0,0,0,0.1); width: 220px; }
+        canvas { flex-grow: 1; display: block; cursor: crosshair; }
+        .row { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+        input[type="range"] { width: 100%; accent-color: #4a90e2; cursor: pointer; }
+        label { font-size: 0.75em; font-weight: 700; color: #888; text-transform: uppercase; }
+        button { cursor: pointer; padding: 8px; background: #fff; border: 1px solid #ddd; border-radius: 6px; transition: all 0.2s; font-size: 0.85em; }
+        button.active { background: #4a90e2; color: white; border-color: #2a70c2; }
+        .btn-group { display: flex; gap: 5px; width: 100%; }
+        #fileInput { display: none; }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div class="sidebar-header">Shape Library</div>
+    <div class="storage-btns">
+        <button id="exportBtn">Save to File</button>
+        <button id="importBtn">Load File</button>
+    </div>
+    <input type="file" id="fileInput" accept=".json">
+    <div id="shape-list"></div>
+</div>
+
+<div id="controls">
+    <div class="btn-group"><button id="playPause">Play (Space)</button></div>
+    <div class="btn-group">
+        <button id="selectModeBtn">Select Mode</button>
+        <button id="drawModeBtn" class="active">Draw Mode</button>
+    </div>
+    <div class="btn-group">
+        <button id="back">← Back</button>
+        <button id="step">Step →</button>
+    </div>
+    <div class="row">
+        <label>Zoom</label>
+        <input type="range" id="zoom" min="5" max="100" value="30">
+    </div>
+    <div class="row">
+        <label>Speed</label>
+        <input type="range" id="speed" min="10" max="500" value="100" dir="rtl">
+    </div>
+    <button id="clear" style="color: #d9534f;">Clear Grid</button>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const shapeListEl = document.getElementById('shape-list');
+const zoomInput = document.getElementById('zoom');
+const speedInput = document.getElementById('speed');
+const fileInput = document.getElementById('fileInput');
+
+let cellSize = 30;
+let grid = new Set();
+let history = [];
+let shapeLibrary = [];
+let isPlaying = false;
+let lastTick = 0;
+let cameraX = 0, cameraY = 0;
+let mode = 'draw', isDraggingOnCanvas = false;
+let selectionStart = null, selectionEnd = null, currentClipboard = null;
+let drawModeType = true, lastMousePos = null;
+
+function getCoord(x, y) { return `${x},${y}`; }
+
+function screenToGrid(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor((clientX - rect.left - canvas.width / 2 - cameraX) / cellSize);
+    const y = Math.floor((clientY - rect.top - canvas.height / 2 - cameraY) / cellSize);
+    return { x, y };
+}
+
+// --- Persistence ---
+function saveToLocalStorage() { localStorage.setItem('gol_library', JSON.stringify(shapeLibrary)); }
+function loadFromLocalStorage() {
+    const saved = localStorage.getItem('gol_library');
+    if (saved) { shapeLibrary = JSON.parse(saved); updateLibraryUI(); }
+}
+
+function updateLibraryUI() {
+    shapeListEl.innerHTML = shapeLibrary.length === 0 ? 
+        '<div style="font-size: 0.8em; color: #999; text-align: center; margin-top: 20px;">Drag in <b>Select Mode</b> to save.</div>' : '';
+    
+    shapeLibrary.forEach((item, index) => {
+        const div = document.createElement('div');
+        div.className = 'shape-item';
+        div.innerHTML = `<div class="shape-info"><span class="shape-name">${item.name}</span><span class="shape-meta">${item.pattern.length} cells</span></div><button class="delete-btn">×</button>`;
+        div.onclick = () => { currentClipboard = item.pattern; mode = 'paste'; document.querySelectorAll('button').forEach(b => b.classList.remove('active')); render(); };
+        div.querySelector('.delete-btn').onclick = (e) => { e.stopPropagation(); shapeLibrary.splice(index, 1); saveToLocalStorage(); updateLibraryUI(); };
+        shapeListEl.appendChild(div);
+    });
+}
+
+// --- File IO ---
+document.getElementById('exportBtn').onclick = () => {
+    const blob = new Blob([JSON.stringify(shapeLibrary, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'gol_shapes.json'; a.click();
+    URL.revokeObjectURL(url);
+};
+document.getElementById('importBtn').onclick = () => fileInput.click();
+fileInput.onchange = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try { shapeLibrary = [...shapeLibrary, ...JSON.parse(event.target.result)]; saveToLocalStorage(); updateLibraryUI(); } catch (err) { alert("Invalid file."); }
+    };
+    reader.readAsText(file);
+};
+
+function init() {
+    canvas.width = window.innerWidth - 260;
+    canvas.height = window.innerHeight;
+    loadFromLocalStorage();
+    render();
+}
+
+function render() {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const cx = canvas.width / 2 + cameraX, cy = canvas.height / 2 + cameraY;
+    ctx.beginPath(); ctx.strokeStyle = '#f0f0f0';
+    for (let x = cx % cellSize; x < canvas.width; x += cellSize) { ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); }
+    for (let y = cy % cellSize; y < canvas.height; y += cellSize) { ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); }
+    ctx.stroke();
+    ctx.fillStyle = '#4a90e2';
+    grid.forEach(k => {
+        const [x, y] = k.split(',').map(Number);
+        ctx.fillRect(cx + x * cellSize + 1, cy + y * cellSize + 1, cellSize - 2, cellSize - 2);
+    });
+    if (mode === 'select' && selectionStart && selectionEnd) {
+        const x1 = Math.min(selectionStart.x, selectionEnd.x), y1 = Math.min(selectionStart.y, selectionEnd.y);
+        const x2 = Math.max(selectionStart.x, selectionEnd.x), y2 = Math.max(selectionStart.y, selectionEnd.y);
+        ctx.strokeStyle = '#4a90e2'; ctx.setLineDash([5, 5]);
+        ctx.strokeRect(cx + x1 * cellSize, cy + y1 * cellSize, (x2 - x1 + 1) * cellSize, (y2 - y1 + 1) * cellSize);
+        ctx.setLineDash([]); ctx.fillStyle = 'rgba(74, 144, 226, 0.1)';
+        ctx.fillRect(cx + x1 * cellSize, cy + y1 * cellSize, (x2 - x1 + 1) * cellSize, (y2 - y1 + 1) * cellSize);
+    }
+    if (mode === 'paste' && currentClipboard && lastMousePos) {
+        ctx.globalAlpha = 0.4;
+        const {x: gx, y: gy} = screenToGrid(lastMousePos.x, lastMousePos.y);
+        currentClipboard.forEach(c => ctx.fillRect(cx + (gx + c.x) * cellSize + 1, cy + (gy + c.y) * cellSize + 1, cellSize - 2, cellSize - 2));
+        ctx.globalAlpha = 1.0;
+    }
+}
+
+function saveSelection() {
+    if (!selectionStart || !selectionEnd) return;
+    const x1 = Math.min(selectionStart.x, selectionEnd.x), y1 = Math.min(selectionStart.y, selectionEnd.y);
+    const x2 = Math.max(selectionStart.x, selectionEnd.x), y2 = Math.max(selectionStart.y, selectionEnd.y);
+    const pattern = [];
+    for (let x = x1; x <= x2; x++) for (let y = y1; y <= y2; y++) if (grid.has(getCoord(x, y))) pattern.push({ x: x - x1, y: y - y1 });
+    if (pattern.length === 0) return;
+    const name = prompt("Name your shape:", `Shape ${shapeLibrary.length + 1}`);
+    if (!name) return;
+    shapeLibrary.push({ name, pattern }); saveToLocalStorage(); updateLibraryUI();
+    selectionStart = null; selectionEnd = null;
+}
+
+canvas.addEventListener('mousedown', (e) => {
+    isDraggingOnCanvas = true;
+    const pos = screenToGrid(e.clientX, e.clientY);
+    if (mode === 'draw') { drawModeType = !grid.has(getCoord(pos.x, pos.y)); const k = getCoord(pos.x, pos.y); if(drawModeType) grid.add(k); else grid.delete(k); }
+    else if (mode === 'select') { selectionStart = pos; selectionEnd = pos; }
+    else if (mode === 'paste' && currentClipboard) { currentClipboard.forEach(c => grid.add(getCoord(pos.x + c.x, pos.y + c.y))); mode = 'draw'; document.getElementById('drawModeBtn').classList.add('active'); }
+    render();
+});
+
+window.addEventListener('mousemove', (e) => {
+    lastMousePos = { x: e.clientX, y: e.clientY };
+    if (!isDraggingOnCanvas && mode !== 'paste') return;
+    const pos = screenToGrid(e.clientX, e.clientY);
+    if (isDraggingOnCanvas && mode === 'draw') { const k = getCoord(pos.x, pos.y); if(drawModeType) grid.add(k); else grid.delete(k); }
+    if (isDraggingOnCanvas && mode === 'select') selectionEnd = pos;
+    render();
+});
+
+window.addEventListener('mouseup', () => { if (isDraggingOnCanvas && mode === 'select') saveSelection(); isDraggingOnCanvas = false; render(); });
+
+// --- FIX: DRAGGABLE SLIDERS THAT IGNORE ARROWS ---
+const blockArrows = (e) => { if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') e.preventDefault(); };
+zoomInput.oninput = (e) => { cellSize = parseInt(e.target.value); render(); };
+zoomInput.addEventListener('keydown', blockArrows);
+speedInput.addEventListener('keydown', blockArrows);
+
+document.getElementById('selectModeBtn').onclick = (e) => { e.stopPropagation(); mode = 'select'; e.target.classList.add('active'); document.getElementById('drawModeBtn').classList.remove('active'); selectionStart = null; };
+document.getElementById('drawModeBtn').onclick = (e) => { e.stopPropagation(); mode = 'draw'; e.target.classList.add('active'); document.getElementById('selectModeBtn').classList.remove('active'); selectionStart = null; selectionEnd = null; render(); };
+
+window.addEventListener('wheel', (e) => { e.preventDefault(); cameraX -= e.deltaX; cameraY -= e.deltaY; render(); }, { passive: false });
+document.getElementById('playPause').onclick = function() { isPlaying = !isPlaying; this.innerText = isPlaying ? "Pause" : "Play"; };
+document.getElementById('clear').onclick = () => { grid.clear(); history = []; render(); };
+
+function step() {
+    history.push(new Set(grid)); if (history.length > 60) history.shift();
+    const newGrid = new Set(), counts = new Map();
+    grid.forEach(k => {
+        const [gx, gy] = k.split(',').map(Number);
+        for(let i=-1; i<=1; i++) for(let j=-1; j<=1; j++) {
+            if(i===0 && j===0) continue;
+            const nk = getCoord(gx+i, gy+j);
+            counts.set(nk, (counts.get(nk) || 0) + 1);
+        }
+    });
+    counts.forEach((c, k) => { if(c===3 || (c===2 && grid.has(k))) newGrid.add(k); });
+    grid = newGrid; render();
+}
+
+window.addEventListener('keydown', (e) => {
+    if (e.code === 'ArrowRight') { e.preventDefault(); step(); }
+    if (e.code === 'ArrowLeft') { e.preventDefault(); if (history.length) { grid = history.pop(); render(); } }
+    if (e.code === 'Space') { e.preventDefault(); document.getElementById('playPause').click(); }
+    if (e.code === 'Escape') document.getElementById('drawModeBtn').click();
+});
+
+function loop(t) { if (isPlaying && t - lastTick > parseInt(speedInput.value)) { step(); lastTick = t; } requestAnimationFrame(loop); }
+window.onresize = init;
+init();
+loop(0);
+</script>
+</body>
+</html>
